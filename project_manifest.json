@@ -1,0 +1,51 @@
+{
+  "project_name": "Kansas Cropping Systems Decision Dashboard V2.0",
+  "economic_rows": 152,
+  "economic_years": [
+    1981,
+    2018
+  ],
+  "economic_crops": [
+    "MZ",
+    "WT",
+    "SG",
+    "SB"
+  ],
+  "simulation_data_status": "not included; generate from H drive using scripts/prepare_simulation_data.py",
+  "version": "2.0",
+  "supported_continuous_systems": [
+    "MZ",
+    "SG",
+    "WT",
+    "SB"
+  ],
+  "sidebar_filters": [
+    "Water regime",
+    "Cropping system",
+    "Farm economics",
+    "Spatial farm options"
+  ],
+  "cropping_system_display": "single system by default; optional All cropping systems",
+  "cumulative_outputs": [
+    "Cumulative yield by crop and year",
+    "Cumulative gross return by crop and year",
+    "Cumulative return after operational cost by crop and year"
+  ],
+  "farm_economic_options": [
+    "Gross return",
+    "Return after operational cost",
+    "Return after total production cost",
+    "Marginal gross return vs rainfed",
+    "Marginal return after operational cost vs rainfed",
+    "Marginal return after total cost vs rainfed"
+  ],
+  "spatial_output": "data/processed/cropping_systems_spatial.parquet",
+  "spatial_fill": "authoritative 2,776-site grid derived directly from spatial Parquet; exact site-ID matching; IDW only for genuinely missing numeric values",
+  "optimizer": "dynamic valid objectives with constraint diagnostics and reset",
+  "money_display": "compact K/M/B notation on cards and charts while preserving source values",
+  "grid_safety": "no artificial lattice expansion; master grid is restricted to original simulation sites",
+  "spatial_rendering": "automatic visible square-cell ScatterGL map; system-specific regime and year filters",
+  "economic_source": "attached four-sheet crop cost-and-return workbook verified for 152 crop-year rows, 1981-2018",
+  "hotfix": "V5.10 update archive now includes matched src/spatial.py with build_authoritative_master_grid",
+  "display_title": "Kansas Cropping Systems Decision Dashboard V2.0"
+}

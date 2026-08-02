@@ -178,7 +178,7 @@ WATER_DASH_MAP = {"Rainfed": "solid", "Irrigated": "dash", "Potential": "dot"}
 WATER_SYMBOL_MAP = {"Rainfed": "circle", "Irrigated": "square", "Potential": "diamond"}
 
 st.set_page_config(
-    page_title="Kansas Cropping Systems Decision Dashboard",
+    page_title="Kansas Cropping Systems Decision Dashboard V2.0",
     page_icon="🌾",
     layout="wide",
 )
@@ -283,7 +283,7 @@ def cached_load_spatial(path: str) -> pd.DataFrame:
     return load_spatial_simulation_data(path)
 
 
-st.title("Kansas Cropping Systems: Yield, Income, and Water-Use Dashboard")
+st.title("Kansas Cropping Systems Decision Dashboard V2.0")
 
 economics = load_economic_data(ECON_PATH)
 
