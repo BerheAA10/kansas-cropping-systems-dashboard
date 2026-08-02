@@ -276,9 +276,6 @@ def cached_load_spatial(path: str) -> pd.DataFrame:
 
 
 st.title("Kansas Cropping Systems: Yield, Income, and Water-Use Dashboard")
-st.caption(
-    "Long-term per-acre comparison of continuous crops and rotations, 1981–2018."
-)
 
 economics = load_economic_data(ECON_PATH)
 
@@ -488,18 +485,6 @@ if coverage_problems:
     with st.expander("Data coverage notice", expanded=False):
         for problem in coverage_problems:
             st.write("• " + problem)
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric(
-    "Cropping system",
-    selected_system_label if not all_systems_selected else f"{len(selected_systems)} systems",
-)
-c2.metric("Water regime", selected_regime_label)
-c3.metric("Mean yield", f"{annual['yield_kg_ha'].mean():,.0f} kg/ha")
-c4.metric(
-    f"Mean {selected_economic_label.lower()}",
-    compact_money(annual[selected_annual_economic_col].mean(), "/acre"),
-)
 
 tabs = st.tabs(
     [
