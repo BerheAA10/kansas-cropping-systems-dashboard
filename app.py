@@ -551,11 +551,6 @@ for row in coverage_check.itertuples(index=False):
         coverage_problems.append(
             f"{row.base_system} | {row.water_regime}: " + "; ".join(details)
         )
-if coverage_problems:
-    with st.expander("Data coverage notice", expanded=False):
-        for problem in coverage_problems:
-            st.write("• " + problem)
-
 tabs = st.tabs(
     [
         "Overview",
@@ -1707,3 +1702,11 @@ with tabs[1]:
                         "This selected field is nearly spatially uniform for the chosen year. "
                         "Choose yield, gross return, or return after cost to see stronger spatial contrast."
                     )
+
+# Keep data-coverage information available without interrupting the main dashboard header.
+if coverage_problems:
+    st.divider()
+    with st.expander("Data coverage notice", expanded=False):
+        for problem in coverage_problems:
+            st.write("• " + problem)
+
