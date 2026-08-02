@@ -895,10 +895,25 @@ with tabs[6]:
 
     preferred_objective = "Highest average return above operating cost"
     common_gross_objective = "Highest cumulative gross income over common years"
+    common_operating_return_objective = (
+        "Highest cumulative return above operating cost over common years"
+    )
+    common_year_objectives = {
+        common_gross_objective: {
+            "annual_metric": "gross_income_simulated_usd_ac",
+            "summary_metric": "cumulative_gross_income_common_years_usd_ac",
+            "caption_name": "Cumulative gross income",
+        },
+        common_operating_return_objective: {
+            "annual_metric": "return_above_operating_usd_ac",
+            "summary_metric": "cumulative_return_above_operating_common_years_usd_ac",
+            "caption_name": "Cumulative return above operating cost",
+        },
+    }
     objective_options = [
         label
         for label, (metric, _ascending) in OBJECTIVES.items()
-        if label == common_gross_objective
+        if label in common_year_objectives
         or (
             metric in optimizer_summary_all.columns
             and optimizer_summary_all[metric].notna().any()
@@ -972,7 +987,7 @@ with tabs[6]:
         optimizer_scope = optimizer_scope[optimizer_scope["years"].eq(38)]
 
     common_comparison_years: list[int] = []
-    if objective == common_gross_objective and not optimizer_scope.empty:
+    if objective in common_year_objectives and not optimizer_scope.empty:
         comparison_keys = [
             "cropping_system",
             "base_system",
@@ -989,7 +1004,9 @@ with tabs[6]:
         # Count unique full system-regime keys rather than relying only on the
         # display label, which protects the comparison if labels are reused.
         common_source = common_source.copy()
-        common_source["_comparison_key"] = common_source[comparison_keys].astype(str).agg("|".join, axis=1)
+        common_source["_comparison_key"] = (
+            common_source[comparison_keys].astype(str).agg("|".join, axis=1)
+        )
         year_coverage = (
             common_source.groupby("year")["_comparison_key"]
             .nunique()
@@ -1000,17 +1017,16 @@ with tabs[6]:
                 year_coverage["eligible_choices"].eq(n_eligible_choices), "year"
             ].astype(int).tolist()
         )
+        common_spec = common_year_objectives[objective]
+        annual_metric = common_spec["annual_metric"]
+        summary_metric = common_spec["summary_metric"]
         common_totals = (
             common_source[
                 common_source["year"].isin(common_comparison_years)
             ]
-            .groupby(comparison_keys, as_index=False, dropna=False)
-            .agg(
-                cumulative_gross_income_common_years_usd_ac=(
-                    "gross_income_simulated_usd_ac",
-                    "sum",
-                )
-            )
+            .groupby(comparison_keys, as_index=False, dropna=False)[annual_metric]
+            .sum()
+            .rename(columns={annual_metric: summary_metric})
         )
         optimizer_scope = optimizer_scope.merge(
             common_totals,
@@ -1073,11 +1089,13 @@ with tabs[6]:
             "axis_title": "Average return above operating cost ($/acre/year)",
             "tickformat": ",.0f",
         },
-        "total_return_above_operating_usd_ac": {
+        "cumulative_return_above_operating_common_years_usd_ac": {
             "value_kind": "money",
             "suffix": "/acre",
             "decimals": 0,
-            "axis_title": "Total return above operating cost ($/acre)",
+            "axis_title": (
+                "Cumulative return above operating cost over common years ($/acre)"
+            ),
             "tickformat": ",.0f",
         },
         "mean_return_above_total_usd_ac": {
@@ -1200,12 +1218,13 @@ with tabs[6]:
         )
         st.plotly_chart(rank_fig, width="stretch")
 
-        if objective == common_gross_objective:
+        if objective in common_year_objectives:
             if common_comparison_years:
                 first_common_year = min(common_comparison_years)
                 last_common_year = max(common_comparison_years)
+                caption_name = common_year_objectives[objective]["caption_name"]
                 st.caption(
-                    f"Cumulative gross income is summed over {len(common_comparison_years)} "
+                    f"{caption_name} is summed over {len(common_comparison_years)} "
                     f"calendar years shared by every eligible cropping-system and water-regime "
                     f"combination ({first_common_year}–{last_common_year}). Only actual annual "
                     "records in those common years are included."
@@ -1246,7 +1265,6 @@ with tabs[6]:
         )
 
         unequal_year_total_metrics = {
-            "total_return_above_operating_usd_ac",
             "total_return_above_total_usd_ac",
         }
         if (
@@ -1267,7 +1285,7 @@ with tabs[6]:
                     "base_system",
                     "water_regime",
                     "years",
-                    *( ["common_years"] if objective == common_gross_objective else [] ),
+                    *( ["common_years"] if objective in common_year_objectives else [] ),
                     metric_col,
                     "mean_yield_kg_ha",
                     "yield_cv_pct",
@@ -1290,6 +1308,10 @@ with tabs[6]:
                 "common_years": "Common comparison years",
                 "cumulative_gross_income_common_years_usd_ac": st.column_config.NumberColumn(
                     "Cumulative gross income over common years ($/acre)",
+                    format="$%,.0f",
+                ),
+                "cumulative_return_above_operating_common_years_usd_ac": st.column_config.NumberColumn(
+                    "Cumulative return above operating cost over common years ($/acre)",
                     format="$%,.0f",
                 ),
                 "mean_yield_kg_ha": st.column_config.NumberColumn("Mean yield (kg/ha)", format="%,.0f"),

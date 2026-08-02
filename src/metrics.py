@@ -214,8 +214,8 @@ OBJECTIVES = {
         "mean_return_above_operating_usd_ac",
         False,
     ),
-    "Highest total return above operating cost": (
-        "total_return_above_operating_usd_ac",
+    "Highest cumulative return above operating cost over common years": (
+        "cumulative_return_above_operating_common_years_usd_ac",
         False,
     ),
     "Highest average return above total cost": (
