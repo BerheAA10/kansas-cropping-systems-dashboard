@@ -151,6 +151,14 @@ SYSTEM_CROPS = {
     "SB-MZ-SG-WT": {"SB", "MZ", "SG", "WT"},
 }
 CROP_ORDER = ["Soybean", "Maize", "Sorghum", "Wheat"]
+CROP_CODE_ORDER = ["SB", "MZ", "SG", "WT"]
+CROP_NAME_BY_CODE = {
+    "SB": "Soybean",
+    "MZ": "Maize",
+    "SG": "Sorghum",
+    "WT": "Wheat",
+}
+CROP_CODE_BY_NAME = {name: code for code, name in CROP_NAME_BY_CODE.items()}
 CROP_COLOR_MAP = {
     "Soybean": "#2ca02c",
     "Maize": "#ff7f0e",
@@ -299,8 +307,6 @@ missing_expected_systems = [
     system for system in EXPECTED_CROPPING_SYSTEMS if system not in available_systems
 ]
 
-system_choices = ["All cropping systems", *available_systems]
-default_system_index = 1 if len(system_choices) > 1 else 0
 regime_choices = ["All water regimes", *available_regimes]
 
 with st.sidebar:
@@ -313,13 +319,51 @@ with st.sidebar:
         help="Choose one regime or compare all available regimes.",
     )
 
+    global_crop_codes = [
+        code
+        for code in CROP_CODE_ORDER
+        if code in set(simulation["crop_code"].dropna().astype(str))
+    ]
+    crop_choices = [
+        "All crops",
+        *[CROP_NAME_BY_CODE[code] for code in global_crop_codes],
+    ]
+
+    st.subheader("Crop")
+    selected_crop_label = st.selectbox(
+        "Crop",
+        crop_choices,
+        index=0,
+        label_visibility="collapsed",
+        help=(
+            "Filter Overview, Annual charts, Cumulative performance, Economics, "
+            "and Water use/IWUE by crop. The cropping-system list updates to systems "
+            "that contain the selected crop."
+        ),
+    )
+    selected_sidebar_crop_code = (
+        None
+        if selected_crop_label == "All crops"
+        else CROP_CODE_BY_NAME[selected_crop_label]
+    )
+    eligible_systems = [
+        system
+        for system in available_systems
+        if selected_sidebar_crop_code is None
+        or selected_sidebar_crop_code in SYSTEM_CROPS.get(system, set())
+    ]
+    eligible_system_choices = ["All cropping systems", *eligible_systems]
+    eligible_default_index = 1 if len(eligible_system_choices) > 1 else 0
+
     st.subheader("Cropping system")
     selected_system_label = st.selectbox(
         "Cropping system",
-        system_choices,
-        index=default_system_index,
+        eligible_system_choices,
+        index=eligible_default_index,
         label_visibility="collapsed",
-        help="One system is shown at a time by default. Select All cropping systems for comparison.",
+        help=(
+            "Choose one system or compare all systems containing the selected crop."
+        ),
     )
 
     st.subheader("Farm economics")
@@ -332,10 +376,15 @@ with st.sidebar:
 
     st.subheader("Spatial farm options")
     with st.expander("Map filters", expanded=True):
+        default_map_system = (
+            selected_system_label
+            if selected_system_label in available_systems
+            else (eligible_systems[0] if eligible_systems else available_systems[0])
+        )
         spatial_system = st.selectbox(
             "Map cropping system",
             available_systems,
-            index=(available_systems.index(selected_system_label) if selected_system_label in available_systems else 0),
+            index=available_systems.index(default_map_system),
             disabled=not spatial_available,
         )
 
@@ -395,9 +444,19 @@ with st.sidebar:
     spatial_enabled = spatial_available and bool(spatial_regime_options) and bool(available_map_years)
 
 selected_systems = (
-    available_systems
+    eligible_systems
     if selected_system_label == "All cropping systems"
     else [selected_system_label]
+)
+selected_crop_codes = (
+    global_crop_codes
+    if selected_crop_label == "All crops"
+    else [CROP_CODE_BY_NAME[selected_crop_label]]
+)
+selected_crop_context = (
+    "all crops"
+    if selected_crop_label == "All crops"
+    else selected_crop_label
 )
 selected_regimes = (
     available_regimes
@@ -418,7 +477,10 @@ if missing_expected_systems:
         + ". Rebuild the processed data after installing the newest preparation script."
     )
 
-metric_source = simulation[simulation["base_system"].isin(selected_systems)].copy()
+metric_source = simulation[
+    simulation["base_system"].isin(selected_systems)
+    & simulation["crop_code"].isin(selected_crop_codes)
+].copy()
 
 # Retain all regimes for matching rainfed baselines before applying the visible regime filter.
 detailed_all_regimes = add_economic_and_water_metrics(metric_source, economics)
@@ -427,7 +489,9 @@ detailed = detailed_all_regimes[
 ].copy()
 
 if detailed.empty:
-    st.info("No records match the selected cropping system and water regime.")
+    st.info(
+        "No records match the selected cropping system, crop, and water regime."
+    )
     st.stop()
 
 missing_economic_rows = detailed[
@@ -459,7 +523,10 @@ optimizer_summary_all = summarize_systems(optimizer_annual_all)
 
 # Warn about coverage for the currently displayed system(s).
 coverage_check = (
-    simulation[simulation["base_system"].isin(selected_systems)]
+    simulation[
+        simulation["base_system"].isin(selected_systems)
+        & simulation["crop_code"].isin(selected_crop_codes)
+    ]
     .groupby(["base_system", "water_regime"], as_index=False)
     .agg(
         first_year=("year", "min"),
@@ -471,7 +538,10 @@ coverage_check = (
 coverage_problems: list[str] = []
 for row in coverage_check.itertuples(index=False):
     found_crops = set(str(row.crops).split(",")) if row.crops else set()
-    missing_crops = SYSTEM_CROPS.get(row.base_system, set()) - found_crops
+    expected_selected_crops = SYSTEM_CROPS.get(row.base_system, set()) & set(
+        selected_crop_codes
+    )
+    missing_crops = expected_selected_crops - found_crops
     details: list[str] = []
     if row.years < 38:
         details.append(f"{row.years}/38 years")
@@ -500,7 +570,9 @@ tabs = st.tabs(
 )
 
 with tabs[0]:
-    st.subheader(f"Long-term {selected_economic_label.lower()}")
+    st.subheader(
+        f"Long-term {selected_economic_label.lower()}: {selected_crop_context}"
+    )
     overview_trend = annual.dropna(subset=[selected_annual_economic_col]).copy()
     if overview_trend.empty:
         st.info(
@@ -529,15 +601,20 @@ with tabs[0]:
                 "base_system": "Cropping system",
                 "water_regime": "Water regime",
             },
-            title=f"Annual {selected_economic_label.lower()}, 1981–2018",
+            title=(
+                f"Annual {selected_economic_label.lower()}, 1981–2018 — "
+                f"{selected_crop_context}"
+            ),
         )
         overview_trend_fig.update_layout(height=500, legend_title_text="System / water regime")
         overview_trend_fig.update_traces(marker={"size": 7}, line={"width": 2.2})
         style_numeric_axis(overview_trend_fig, money=True)
         st.plotly_chart(overview_trend_fig, width="stretch")
-    st.caption(selected_economic["definition"])
+    st.caption(
+        f"Crop filter: {selected_crop_context}. " + selected_economic["definition"]
+    )
 
-    st.subheader("Long-term summary")
+    st.subheader(f"Long-term summary: {selected_crop_context}")
     overview_cols = [
         "cropping_system",
         "years",
@@ -570,12 +647,12 @@ with tabs[0]:
     )
 
 with tabs[2]:
-    st.subheader("Annual yield by crop and year")
+    st.subheader(f"Annual yield by crop and year: {selected_crop_context}")
     annual_yield_fig = crop_chart(
         crop_annual,
         y_col="yield_kg_ha",
         y_label="Annual yield (kg/ha)",
-        title="Annual simulated yield by crop",
+        title=f"Annual simulated yield by crop — {selected_crop_context}",
         all_systems_selected=all_systems_selected,
         markers=True,
     )
@@ -584,12 +661,18 @@ with tabs[2]:
     else:
         st.plotly_chart(annual_yield_fig, width="stretch")
 
-    st.subheader(f"Annual {selected_economic_label.lower()} by crop and year")
+    st.subheader(
+        f"Annual {selected_economic_label.lower()} by crop and year: "
+        f"{selected_crop_context}"
+    )
     annual_econ_fig = crop_chart(
         crop_annual,
         y_col=selected_annual_economic_col,
         y_label=f"{selected_economic_label} ($/acre)",
-        title=f"Annual {selected_economic_label.lower()} by crop",
+        title=(
+            f"Annual {selected_economic_label.lower()} by crop — "
+            f"{selected_crop_context}"
+        ),
         all_systems_selected=all_systems_selected,
         markers=True,
         money_axis=True,
@@ -601,15 +684,20 @@ with tabs[2]:
         )
     else:
         st.plotly_chart(annual_econ_fig, width="stretch")
-    st.caption(selected_economic["definition"])
+    st.caption(
+        f"Crop filter: {selected_crop_context}. " + selected_economic["definition"]
+    )
 
 with tabs[3]:
-    st.subheader("Cumulative yield by crop and year")
+    st.subheader(f"Cumulative yield by crop and year: {selected_crop_context}")
     cumulative_yield_fig = crop_chart(
         crop_cumulative,
         y_col="cumulative_yield_kg_ha",
         y_label="Cumulative yield (kg/ha)",
-        title="Cumulative simulated yield by crop, 1981–2018",
+        title=(
+            f"Cumulative simulated yield by crop, 1981–2018 — "
+            f"{selected_crop_context}"
+        ),
         all_systems_selected=all_systems_selected,
     )
     if cumulative_yield_fig is None:
@@ -617,12 +705,17 @@ with tabs[3]:
     else:
         st.plotly_chart(cumulative_yield_fig, width="stretch")
 
-    st.subheader("Cumulative gross return by crop and year")
+    st.subheader(
+        f"Cumulative gross return by crop and year: {selected_crop_context}"
+    )
     cumulative_gross_fig = crop_chart(
         crop_cumulative,
         y_col="cumulative_gross_return_usd_ac",
         y_label="Cumulative gross return ($/acre)",
-        title="Cumulative gross return by crop, 1981–2018",
+        title=(
+            f"Cumulative gross return by crop, 1981–2018 — "
+            f"{selected_crop_context}"
+        ),
         all_systems_selected=all_systems_selected,
         money_axis=True,
     )
@@ -631,12 +724,18 @@ with tabs[3]:
     else:
         st.plotly_chart(cumulative_gross_fig, width="stretch")
 
-    st.subheader("Cumulative return after operational cost by crop and year")
+    st.subheader(
+        "Cumulative return after operational cost by crop and year: "
+        f"{selected_crop_context}"
+    )
     cumulative_operating_fig = crop_chart(
         crop_cumulative,
         y_col="cumulative_return_after_operational_cost_usd_ac",
         y_label="Cumulative return after operational cost ($/acre)",
-        title="Cumulative return after operational cost by crop, 1981–2018",
+        title=(
+            "Cumulative return after operational cost by crop, 1981–2018 — "
+            f"{selected_crop_context}"
+        ),
         all_systems_selected=all_systems_selected,
         money_axis=True,
     )
@@ -672,7 +771,9 @@ with tabs[3]:
     )
 
 with tabs[4]:
-    st.subheader(f"Annual {selected_economic_label.lower()}")
+    st.subheader(
+        f"Annual {selected_economic_label.lower()}: {selected_crop_context}"
+    )
     annual_economic_data = annual.dropna(subset=[selected_annual_economic_col]).copy()
     if annual_economic_data.empty:
         st.info(
@@ -701,14 +802,17 @@ with tabs[4]:
                 "base_system": "Cropping system",
                 "water_regime": "Water regime",
             },
-            title=f"Annual {selected_economic_label.lower()}",
+            title=(
+                f"Annual {selected_economic_label.lower()} — "
+                f"{selected_crop_context}"
+            ),
         )
         annual_economic_fig.update_layout(legend_title_text="System / water regime")
         annual_economic_fig.update_traces(marker={"size": 7}, line={"width": 2.2})
         style_numeric_axis(annual_economic_fig, money=True)
         st.plotly_chart(annual_economic_fig, width="stretch")
 
-    st.subheader("Average and total economics")
+    st.subheader(f"Average and total economics: {selected_crop_context}")
     income_cols = [
         "cropping_system",
         "years",
@@ -725,10 +829,12 @@ with tabs[4]:
     st.dataframe(summary[income_cols], width="stretch", hide_index=True)
 
 with tabs[5]:
-    st.subheader("Water use and irrigation water-use efficiency")
+    st.subheader(
+        f"Water use and irrigation water-use efficiency: {selected_crop_context}"
+    )
     st.caption(
-        "This section compares rainfed and irrigated records for the cropping system selected in the sidebar, "
-        "even when only one water regime is selected for the other dashboard tabs."
+        "This section compares rainfed and irrigated records for the cropping system and crop "
+        "selected in the sidebar, even when only one water regime is selected for the other dashboard tabs."
     )
 
     water_detail = detailed_all_regimes[
@@ -761,12 +867,17 @@ with tabs[5]:
         else np.nan
     )
 
-    st.subheader("Rainfed and irrigated yield by crop and year")
+    st.subheader(
+        f"Rainfed and irrigated yield by crop and year: {selected_crop_context}"
+    )
     water_yield_fig = crop_chart(
         water_crop_annual,
         y_col="yield_kg_ha",
         y_label="Yield (kg/ha)",
-        title="Annual yield under rainfed and irrigated production",
+        title=(
+            "Annual yield under rainfed and irrigated production — "
+            f"{selected_crop_context}"
+        ),
         all_systems_selected=all_systems_selected,
         markers=True,
     )
@@ -781,12 +892,14 @@ with tabs[5]:
             "Irrigation productivity and incremental IWUE cannot be calculated."
         )
     else:
-        st.subheader("Applied irrigation by crop and year")
+        st.subheader(
+            f"Applied irrigation by crop and year: {selected_crop_context}"
+        )
         irrigation_fig = crop_chart(
             irrigated_crop_years,
             y_col="irrigation_mm",
             y_label="Applied irrigation (mm/crop-year)",
-            title="Annual applied irrigation",
+            title=f"Annual applied irrigation — {selected_crop_context}",
             all_systems_selected=all_systems_selected,
             markers=True,
         )
@@ -800,7 +913,10 @@ with tabs[5]:
                 irrigated_crop_years,
                 y_col="irrigation_productivity_kg_m3",
                 y_label="Irrigation productivity (kg/m³)",
-                title="Yield produced per unit of applied irrigation",
+                title=(
+                    "Yield produced per unit of applied irrigation — "
+                    f"{selected_crop_context}"
+                ),
                 all_systems_selected=all_systems_selected,
                 markers=True,
             )
@@ -815,7 +931,10 @@ with tabs[5]:
                 irrigated_crop_years,
                 y_col="incremental_iwue_kg_m3",
                 y_label="Incremental IWUE (kg/m³)",
-                title="Yield gain above rainfed per unit of irrigation",
+                title=(
+                    "Yield gain above rainfed per unit of irrigation — "
+                    f"{selected_crop_context}"
+                ),
                 all_systems_selected=all_systems_selected,
                 markers=True,
             )
@@ -826,7 +945,7 @@ with tabs[5]:
             else:
                 st.plotly_chart(iwue_fig, width="stretch")
 
-    st.subheader("Water-use summary indicators")
+    st.subheader(f"Water-use summary indicators: {selected_crop_context}")
     water_c1, water_c2, water_c3, water_c4 = st.columns(4)
     water_c1.metric(
         "Mean irrigation",
@@ -844,7 +963,10 @@ with tabs[5]:
         help="Site/system yield gain above the paired rainfed yield divided by applied irrigation volume.",
     )
 
-    st.subheader("Water use and irrigation water-use efficiency table")
+    st.subheader(
+        "Water use and irrigation water-use efficiency table: "
+        f"{selected_crop_context}"
+    )
     water_by_crop = (
         water_crop_annual.groupby(
             ["cropping_system", "base_system", "water_regime", "crop_code", "crop_name"],
