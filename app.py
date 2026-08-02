@@ -975,23 +975,110 @@ with tabs[6]:
         min_mean_return_operating=return_floor if use_return_floor else None,
     )
 
+    # Each optimizer objective has an explicit axis title and a non-compact
+    # tick format. This prevents Plotly abbreviations such as 1k and 500m and
+    # makes the physical/economic unit unambiguous for every comparison.
     objective_units = {
-        "mean_yield_kg_ha": ("numeric", " kg/ha", 0),
-        "incremental_iwue_kg_m3": ("numeric", " kg/m³", 3),
-        "irrigation_productivity_kg_m3": ("numeric", " kg/m³", 3),
-        "mean_gross_income_usd_ac": ("money", "/acre/year", 0),
-        "total_gross_income_usd_ac": ("money", "/acre", 0),
-        "mean_return_above_operating_usd_ac": ("money", "/acre/year", 0),
-        "total_return_above_operating_usd_ac": ("money", "/acre", 0),
-        "mean_return_above_total_usd_ac": ("money", "/acre/year", 0),
-        "mean_marginal_return_above_operating_usd_ac": ("money", "/acre/year", 0),
-        "mean_marginal_return_per_mm_usd_ac_mm": ("money", "/acre/mm", 3),
-        "mean_irrigation_mm": ("numeric", " mm/year", 1),
-        "yield_cv_pct": ("numeric", "%", 1),
+        "mean_yield_kg_ha": {
+            "value_kind": "numeric",
+            "suffix": " kg/ha",
+            "decimals": 0,
+            "axis_title": "Mean yield (kg/ha)",
+            "tickformat": ",.0f",
+        },
+        "incremental_iwue_kg_m3": {
+            "value_kind": "numeric",
+            "suffix": " kg/m³",
+            "decimals": 3,
+            "axis_title": "Irrigation water-use efficiency (kg/m³)",
+            "tickformat": ",.3f",
+        },
+        "irrigation_productivity_kg_m3": {
+            "value_kind": "numeric",
+            "suffix": " kg/m³",
+            "decimals": 3,
+            "axis_title": "Irrigation productivity (kg/m³)",
+            "tickformat": ",.3f",
+        },
+        "mean_gross_income_usd_ac": {
+            "value_kind": "money",
+            "suffix": "/acre/year",
+            "decimals": 0,
+            "axis_title": "Average gross income ($/acre/year)",
+            "tickformat": ",.0f",
+        },
+        "total_gross_income_usd_ac": {
+            "value_kind": "money",
+            "suffix": "/acre",
+            "decimals": 0,
+            "axis_title": "Total gross income ($/acre)",
+            "tickformat": ",.0f",
+        },
+        "mean_return_above_operating_usd_ac": {
+            "value_kind": "money",
+            "suffix": "/acre/year",
+            "decimals": 0,
+            "axis_title": "Average return above operating cost ($/acre/year)",
+            "tickformat": ",.0f",
+        },
+        "total_return_above_operating_usd_ac": {
+            "value_kind": "money",
+            "suffix": "/acre",
+            "decimals": 0,
+            "axis_title": "Total return above operating cost ($/acre)",
+            "tickformat": ",.0f",
+        },
+        "mean_return_above_total_usd_ac": {
+            "value_kind": "money",
+            "suffix": "/acre/year",
+            "decimals": 0,
+            "axis_title": "Average return above total cost ($/acre/year)",
+            "tickformat": ",.0f",
+        },
+        "mean_marginal_return_above_operating_usd_ac": {
+            "value_kind": "money",
+            "suffix": "/acre/year",
+            "decimals": 0,
+            "axis_title": "Average marginal return above operating cost ($/acre/year)",
+            "tickformat": ",.0f",
+        },
+        "mean_marginal_return_per_mm_usd_ac_mm": {
+            "value_kind": "money",
+            "suffix": "/acre/mm",
+            "decimals": 3,
+            "axis_title": "Marginal return per mm irrigation ($/acre/mm)",
+            "tickformat": ",.3f",
+        },
+        "mean_irrigation_mm": {
+            "value_kind": "numeric",
+            "suffix": " mm/year",
+            "decimals": 1,
+            "axis_title": "Average irrigation (mm/year)",
+            "tickformat": ",.1f",
+        },
+        "yield_cv_pct": {
+            "value_kind": "numeric",
+            "suffix": "%",
+            "decimals": 1,
+            "axis_title": "Yield variability (%)",
+            "tickformat": ",.1f",
+        },
     }
-    value_kind, suffix, decimals = objective_units.get(
-        metric_col, ("numeric", "", 2)
+    unit_spec = objective_units.get(
+        metric_col,
+        {
+            "value_kind": "numeric",
+            "suffix": "",
+            "decimals": 2,
+            "axis_title": objective,
+            "tickformat": ",.2f",
+        },
     )
+    value_kind = unit_spec["value_kind"]
+    suffix = unit_spec["suffix"]
+    decimals = unit_spec["decimals"]
+    axis_title = unit_spec["axis_title"]
+    axis_tickformat = unit_spec["tickformat"]
 
     if ranking.empty:
         st.warning(
@@ -1030,7 +1117,7 @@ with tabs[6]:
                 "water_regime": EXPECTED_WATER_REGIMES,
             },
             labels={
-                metric_col: objective,
+                metric_col: axis_title,
                 "base_system": "Cropping system",
                 "water_regime": "Water regime",
             },
@@ -1051,7 +1138,14 @@ with tabs[6]:
             bargroupgap=0.06,
             margin={"l": 70, "r": 85, "t": 65, "b": 45},
         )
-        style_numeric_axis(rank_fig, money=value_kind == "money", axis="x")
+        rank_fig.update_xaxes(
+            title_text=axis_title,
+            tickformat=axis_tickformat,
+            tickprefix="$" if value_kind == "money" else "",
+            separatethousands=True,
+            exponentformat="none",
+            showexponent="none",
+        )
         st.plotly_chart(rank_fig, width="stretch")
 
         systems_in_scope = set(optimizer_scope["base_system"].astype(str))
