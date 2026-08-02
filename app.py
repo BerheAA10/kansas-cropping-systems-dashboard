@@ -9,6 +9,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data_loader import (
+    EXCLUDED_CONTINUOUS_SYSTEMS,
+    apply_decision_scope,
     load_economic_data,
     load_simulation_data,
     load_spatial_simulation_data,
@@ -131,10 +133,11 @@ SPATIAL_COLOR_STYLES = {
     },
 }
 
+# V3 decision scope excludes continuous wheat (WT), while wheat remains
+# available as a crop within the SB-MZ-SG-WT rotation.
 EXPECTED_CROPPING_SYSTEMS = [
     "MZ",
     "SG",
-    "WT",
     "SB",
     "SB-MZ",
     "SB-MZ-SG",
@@ -144,7 +147,6 @@ EXPECTED_WATER_REGIMES = ["Rainfed", "Irrigated", "Potential"]
 SYSTEM_CROPS = {
     "MZ": {"MZ"},
     "SG": {"SG"},
-    "WT": {"WT"},
     "SB": {"SB"},
     "SB-MZ": {"SB", "MZ"},
     "SB-MZ-SG": {"SB", "MZ", "SG"},
@@ -168,7 +170,6 @@ CROP_COLOR_MAP = {
 SYSTEM_COLOR_MAP = {
     "MZ": "#e67e22",
     "SG": "#8e44ad",
-    "WT": "#2980b9",
     "SB": "#27ae60",
     "SB-MZ": "#16a085",
     "SB-MZ-SG": "#c0392b",
@@ -178,7 +179,7 @@ WATER_DASH_MAP = {"Rainfed": "solid", "Irrigated": "dash", "Potential": "dot"}
 WATER_SYMBOL_MAP = {"Rainfed": "circle", "Irrigated": "square", "Potential": "diamond"}
 
 st.set_page_config(
-    page_title="Kansas Cropping Systems Decision Dashboard V2.0",
+    page_title="Kansas Cropping Systems Decision Dashboard V3.0",
     page_icon="🌾",
     layout="wide",
 )
@@ -280,10 +281,11 @@ def reset_optimizer_state():
 
 @st.cache_data(show_spinner=False)
 def cached_load_spatial(path: str) -> pd.DataFrame:
-    return load_spatial_simulation_data(path)
+    spatial = load_spatial_simulation_data(path)
+    return apply_decision_scope(spatial)
 
 
-st.title("Kansas Cropping Systems Decision Dashboard V2.0")
+st.title("Kansas Cropping Systems Decision Dashboard V3.0")
 
 economics = load_economic_data(ECON_PATH)
 
@@ -299,6 +301,11 @@ try:
 except Exception as exc:
     st.error(f"Could not load the simulation dataset: {exc}")
     st.stop()
+
+# Apply the V3 decision scope at the application boundary. The source files are
+# intentionally left unchanged so V1/V2 remain reproducible. Only rows whose
+# base system is continuous wheat are excluded. Wheat rows in SB-MZ-SG-WT are retained.
+simulation = apply_decision_scope(simulation)
 
 available_systems = sorted_available(simulation["base_system"], EXPECTED_CROPPING_SYSTEMS)
 available_regimes = sorted_available(simulation["water_regime"], EXPECTED_WATER_REGIMES)
@@ -1478,6 +1485,7 @@ with tabs[7]:
     st.subheader("Methods and interpretation")
     st.markdown(
         """
+- **V3 decision scope:** continuous wheat (`WT`) is excluded from all dashboard choices and rankings. Wheat remains included when it occurs within the `SB-MZ-SG-WT` rotation.
 - **One-system display:** the Cropping system selector shows one system at a time by default. “All cropping systems” enables comparisons and ranking.
 - **Yield:** the DSSAT/statewide simulated yield supplied in the processed files is used directly in kg/ha.
 - **Bushel conversion:** 56 lb/bu is used for maize and sorghum; 60 lb/bu is used for soybean and wheat.

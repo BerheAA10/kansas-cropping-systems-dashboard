@@ -59,6 +59,25 @@ def normalize_base_system(value: object) -> str:
     }
     return continuous_aliases.get(compact, text)
 
+EXCLUDED_CONTINUOUS_SYSTEMS = frozenset({"WT"})
+
+
+def apply_decision_scope(
+    data: pd.DataFrame,
+    excluded_continuous_systems: frozenset[str] = EXCLUDED_CONTINUOUS_SYSTEMS,
+) -> pd.DataFrame:
+    """Exclude unsupported continuous systems while retaining their crops in rotations.
+
+    The exclusion is based only on ``base_system``. Therefore a wheat record whose
+    base system is ``SB-MZ-SG-WT`` remains available, while a record whose base
+    system is continuous ``WT`` is removed. Source and processed files are not
+    modified.
+    """
+    if "base_system" not in data.columns:
+        raise ValueError("Decision-scope filtering requires a base_system column.")
+    normalized = data["base_system"].map(normalize_base_system)
+    return data.loc[~normalized.isin(excluded_continuous_systems)].copy()
+
 
 def load_simulation_data(source: str | Path | BinaryIO) -> pd.DataFrame:
     """Load and validate the portable, state-level simulation dataset."""

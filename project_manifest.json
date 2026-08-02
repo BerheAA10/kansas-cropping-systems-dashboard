@@ -1,5 +1,5 @@
 {
-  "project_name": "Kansas Cropping Systems Decision Dashboard V2.0",
+  "project_name": "Kansas Cropping Systems Decision Dashboard V3.0",
   "economic_rows": 152,
   "economic_years": [
     1981,
@@ -12,11 +12,10 @@
     "SB"
   ],
   "simulation_data_status": "not included; generate from H drive using scripts/prepare_simulation_data.py",
-  "version": "2.0",
+  "version": "3.0",
   "supported_continuous_systems": [
     "MZ",
     "SG",
-    "WT",
     "SB"
   ],
   "sidebar_filters": [
@@ -47,5 +46,15 @@
   "spatial_rendering": "automatic visible square-cell ScatterGL map; system-specific regime and year filters",
   "economic_source": "attached four-sheet crop cost-and-return workbook verified for 152 crop-year rows, 1981-2018",
   "hotfix": "V5.10 update archive now includes matched src/spatial.py with build_authoritative_master_grid",
-  "display_title": "Kansas Cropping Systems Decision Dashboard V2.0"
+  "display_title": "Kansas Cropping Systems Decision Dashboard V3.0",
+  "supported_rotations": [
+    "SB-MZ",
+    "SB-MZ-SG",
+    "SB-MZ-SG-WT"
+  ],
+  "excluded_decision_systems": [
+    "WT"
+  ],
+  "wheat_scope": "Wheat is retained within SB-MZ-SG-WT; only continuous WT is excluded.",
+  "v3_scope_method": "Continuous WT rows remain in source data but are filtered from state-summary and spatial application data immediately after loading."
 }
