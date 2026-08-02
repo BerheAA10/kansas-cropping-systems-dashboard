@@ -62,6 +62,56 @@ def normalize_base_system(value: object) -> str:
 EXCLUDED_CONTINUOUS_SYSTEMS = frozenset({"WT"})
 
 
+# Current source inventory contains SB-MZ-SG under Rainfed and Potential only.
+# Some historical source paths used an irrigation-oriented folder name and were
+# therefore inferred as Irrigated. Keep this explicit and removable so a real
+# SB-MZ-SG irrigated dataset can be enabled later by deleting this mapping.
+REGIME_RELABELS = {
+    ("SB-MZ-SG", "Irrigated"): "Rainfed",
+}
+
+
+def apply_regime_relabels(data: pd.DataFrame) -> pd.DataFrame:
+    """Apply documented system-specific regime corrections without changing yields.
+
+    For the current dashboard inventory, SB-MZ-SG has Rainfed and Potential data
+    only. Rows labeled Irrigated for that system are the rainfed dataset. The
+    correction changes the regime label, sets applied irrigation to zero, and
+    rebuilds the display label. Yield, rainfall, site, crop, and year values are
+    preserved exactly.
+    """
+    required = {"base_system", "water_regime"}
+    missing = required.difference(data.columns)
+    if missing:
+        raise ValueError(
+            "Regime relabeling requires columns: " + ", ".join(sorted(missing))
+        )
+
+    out = data.copy()
+    normalized_system = out["base_system"].map(normalize_base_system)
+    normalized_regime = out["water_regime"].astype(str).str.strip()
+
+    for (base_system, source_regime), target_regime in REGIME_RELABELS.items():
+        mask = (
+            normalized_system.eq(base_system)
+            & normalized_regime.str.casefold().eq(source_regime.casefold())
+        )
+        if not mask.any():
+            continue
+        out.loc[mask, "base_system"] = base_system
+        out.loc[mask, "water_regime"] = target_regime
+        if "irrigation_mm" in out.columns:
+            out.loc[mask, "irrigation_mm"] = 0.0
+
+    if "cropping_system" in out.columns:
+        out["cropping_system"] = (
+            out["base_system"].astype(str).str.strip()
+            + " | "
+            + out["water_regime"].astype(str).str.strip()
+        )
+    return out
+
+
 def apply_decision_scope(
     data: pd.DataFrame,
     excluded_continuous_systems: frozenset[str] = EXCLUDED_CONTINUOUS_SYSTEMS,
@@ -101,6 +151,7 @@ def load_simulation_data(source: str | Path | BinaryIO) -> pd.DataFrame:
     out["crop_code"] = out["crop_code"].str.upper()
     out["base_system"] = out["base_system"].map(normalize_base_system)
     out["rotation"] = out["rotation"].map(normalize_base_system)
+    out = apply_regime_relabels(out)
     out["cropping_system"] = out["base_system"] + " | " + out["water_regime"]
     out["crop_name"] = out["crop_code"].map(CROP_NAMES).fillna(out["crop_code"])
     out = out[out["year"].between(1981, 2018, inclusive="both")]
@@ -155,6 +206,7 @@ def load_spatial_simulation_data(source: str | Path) -> pd.DataFrame:
     out["base_system"] = out["base_system"].map(normalize_base_system)
     out["rotation"] = out["rotation"].map(normalize_base_system)
     out["water_regime"] = out["water_regime"].astype(str).str.strip()
+    out = apply_regime_relabels(out)
     out["cropping_system"] = out["base_system"] + " | " + out["water_regime"]
     out["crop_name"] = out["crop_code"].map(CROP_NAMES).fillna(out["crop_code"])
     out = out[
