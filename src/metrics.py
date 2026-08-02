@@ -206,7 +206,10 @@ OBJECTIVES = {
     "Highest irrigation water-use efficiency": ("incremental_iwue_kg_m3", False),
     "Highest irrigation productivity": ("irrigation_productivity_kg_m3", False),
     "Highest average gross income": ("mean_gross_income_usd_ac", False),
-    "Highest total gross income": ("total_gross_income_usd_ac", False),
+    "Highest cumulative gross income over common years": (
+        "cumulative_gross_income_common_years_usd_ac",
+        False,
+    ),
     "Highest average return above operating cost": (
         "mean_return_above_operating_usd_ac",
         False,

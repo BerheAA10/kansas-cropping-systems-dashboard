@@ -894,11 +894,15 @@ with tabs[6]:
     )
 
     preferred_objective = "Highest average return above operating cost"
+    common_gross_objective = "Highest cumulative gross income over common years"
     objective_options = [
         label
         for label, (metric, _ascending) in OBJECTIVES.items()
-        if metric in optimizer_summary_all.columns
-        and optimizer_summary_all[metric].notna().any()
+        if label == common_gross_objective
+        or (
+            metric in optimizer_summary_all.columns
+            and optimizer_summary_all[metric].notna().any()
+        )
     ]
     if st.session_state.get("optimizer_objective") not in objective_options:
         st.session_state["optimizer_objective"] = (
@@ -967,6 +971,54 @@ with tabs[6]:
     if complete_only:
         optimizer_scope = optimizer_scope[optimizer_scope["years"].eq(38)]
 
+    common_comparison_years: list[int] = []
+    if objective == common_gross_objective and not optimizer_scope.empty:
+        comparison_keys = [
+            "cropping_system",
+            "base_system",
+            "rotation",
+            "water_regime",
+        ]
+        eligible_keys = optimizer_scope[comparison_keys].drop_duplicates()
+        common_source = optimizer_annual_all.merge(
+            eligible_keys,
+            on=comparison_keys,
+            how="inner",
+        )
+        n_eligible_choices = len(eligible_keys)
+        # Count unique full system-regime keys rather than relying only on the
+        # display label, which protects the comparison if labels are reused.
+        common_source = common_source.copy()
+        common_source["_comparison_key"] = common_source[comparison_keys].astype(str).agg("|".join, axis=1)
+        year_coverage = (
+            common_source.groupby("year")["_comparison_key"]
+            .nunique()
+            .reset_index(name="eligible_choices")
+        )
+        common_comparison_years = sorted(
+            year_coverage.loc[
+                year_coverage["eligible_choices"].eq(n_eligible_choices), "year"
+            ].astype(int).tolist()
+        )
+        common_totals = (
+            common_source[
+                common_source["year"].isin(common_comparison_years)
+            ]
+            .groupby(comparison_keys, as_index=False, dropna=False)
+            .agg(
+                cumulative_gross_income_common_years_usd_ac=(
+                    "gross_income_simulated_usd_ac",
+                    "sum",
+                )
+            )
+        )
+        optimizer_scope = optimizer_scope.merge(
+            common_totals,
+            on=comparison_keys,
+            how="left",
+        )
+        optimizer_scope["common_years"] = len(common_comparison_years)
+
     metric_col, ascending = OBJECTIVES[objective]
     ranking = rank_systems(
         optimizer_scope,
@@ -1007,11 +1059,11 @@ with tabs[6]:
             "axis_title": "Average gross income ($/acre/year)",
             "tickformat": ",.0f",
         },
-        "total_gross_income_usd_ac": {
+        "cumulative_gross_income_common_years_usd_ac": {
             "value_kind": "money",
             "suffix": "/acre",
             "decimals": 0,
-            "axis_title": "Total gross income ($/acre)",
+            "axis_title": "Cumulative gross income over common years ($/acre)",
             "tickformat": ",.0f",
         },
         "mean_return_above_operating_usd_ac": {
@@ -1148,6 +1200,22 @@ with tabs[6]:
         )
         st.plotly_chart(rank_fig, width="stretch")
 
+        if objective == common_gross_objective:
+            if common_comparison_years:
+                first_common_year = min(common_comparison_years)
+                last_common_year = max(common_comparison_years)
+                st.caption(
+                    f"Cumulative gross income is summed over {len(common_comparison_years)} "
+                    f"calendar years shared by every eligible cropping-system and water-regime "
+                    f"combination ({first_common_year}–{last_common_year}). Only actual annual "
+                    "records in those common years are included."
+                )
+            else:
+                st.warning(
+                    "No calendar year is shared by every eligible cropping-system and "
+                    "water-regime combination for this comparison."
+                )
+
         systems_in_scope = set(optimizer_scope["base_system"].astype(str))
         missing_from_chart = [
             system
@@ -1177,7 +1245,15 @@ with tabs[6]:
             compact_money(best["mean_return_above_operating_usd_ac"], "/acre/year"),
         )
 
-        if "total" in objective.lower() and not complete_only and ranking["years"].nunique() > 1:
+        unequal_year_total_metrics = {
+            "total_return_above_operating_usd_ac",
+            "total_return_above_total_usd_ac",
+        }
+        if (
+            metric_col in unequal_year_total_metrics
+            and not complete_only
+            and ranking["years"].nunique() > 1
+        ):
             st.warning(
                 "Total-return rankings include choices with different numbers of available years. "
                 "Select ‘Require all 38 years’ for a full-period comparison."
@@ -1191,6 +1267,7 @@ with tabs[6]:
                     "base_system",
                     "water_regime",
                     "years",
+                    *( ["common_years"] if objective == common_gross_objective else [] ),
                     metric_col,
                     "mean_yield_kg_ha",
                     "yield_cv_pct",
@@ -1209,7 +1286,12 @@ with tabs[6]:
                 "rank": "Rank",
                 "base_system": "Cropping system",
                 "water_regime": "Water regime",
-                "years": "Years",
+                "years": "Available years",
+                "common_years": "Common comparison years",
+                "cumulative_gross_income_common_years_usd_ac": st.column_config.NumberColumn(
+                    "Cumulative gross income over common years ($/acre)",
+                    format="$%,.0f",
+                ),
                 "mean_yield_kg_ha": st.column_config.NumberColumn("Mean yield (kg/ha)", format="%,.0f"),
                 "yield_cv_pct": st.column_config.NumberColumn("Yield CV (%)", format="%.1f"),
                 "mean_irrigation_mm": st.column_config.NumberColumn("Mean irrigation (mm/yr)", format="%.1f"),
