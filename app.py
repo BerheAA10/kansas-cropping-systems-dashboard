@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.data_loader import (
     EXCLUDED_CONTINUOUS_SYSTEMS,
@@ -89,6 +90,69 @@ SPATIAL_MEASURES = {
 
 # Neutral grey background for all spatial maps
 MAP_BACKGROUND_GREY = "#d3d3d3"
+
+# --- SPATIAL MAP CLOUD-THEME ISOLATION START ---
+def render_spatial_map_isolated(fig: go.Figure, *, height: int = 790) -> None:
+    """Render the spatial map in an isolated iframe with a fixed grey canvas.
+
+    Streamlit Community Cloud can apply its page/chart theme after Plotly has
+    been configured.  Rendering this one figure in a component iframe keeps
+    the map canvas independent of the host page theme while preserving Plotly
+    interactivity and responsive width.
+    """
+    fig.update_layout(
+        template=None,
+        autosize=True,
+        paper_bgcolor=MAP_BACKGROUND_GREY,
+        plot_bgcolor=MAP_BACKGROUND_GREY,
+    )
+
+    map_html = fig.to_html(
+        full_html=True,
+        include_plotlyjs=True,
+        config={
+            "responsive": True,
+            "displaylogo": False,
+            "scrollZoom": True,
+        },
+    )
+
+    isolated_css = f"""
+    <style>
+      html, body {{
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        min-height: 100% !important;
+        overflow: hidden !important;
+        background: {MAP_BACKGROUND_GREY} !important;
+        background-color: {MAP_BACKGROUND_GREY} !important;
+      }}
+      body > div,
+      .plotly-graph-div,
+      .js-plotly-plot,
+      .plot-container,
+      .svg-container {{
+        width: 100% !important;
+        background: {MAP_BACKGROUND_GREY} !important;
+        background-color: {MAP_BACKGROUND_GREY} !important;
+      }}
+      .main-svg {{
+        background: {MAP_BACKGROUND_GREY} !important;
+      }}
+      .main-svg .bg {{
+        fill: {MAP_BACKGROUND_GREY} !important;
+      }}
+    </style>
+    """
+
+    if "</head>" in map_html:
+        map_html = map_html.replace("</head>", isolated_css + "</head>", 1)
+    else:
+        map_html = isolated_css + map_html
+
+    components.html(map_html, height=height, scrolling=False)
+# --- SPATIAL MAP CLOUD-THEME ISOLATION END ---
 # This affects only blank map/paper areas; data cells keep their selected
 # red-yellow-green or alternative value color scale.
 
@@ -1726,17 +1790,7 @@ with tabs[1]:
                     },
                     template=None,
                 )
-                st.plotly_chart(
-                    spatial_fig,
-                    width="stretch",
-                    config={"responsive": True},
-                    key=(
-                        f"spatial_map_{spatial_system}_{spatial_regime}_"
-                        f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
-                    ),
-                    theme=None,
-                )
-
+                render_spatial_map_isolated(spatial_fig, height=790)
                 st.caption(
                     "The map uses the actual 2,776 simulated observation sites as the data source. "
                     "Observed site values come directly from the actual 2,776 simulation sites. Only unobserved internal display cells are interpolated. The color scale is recalculated separately for the selected year, system, regime, and measure, with red for low values and green for high values."
