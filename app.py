@@ -568,7 +568,9 @@ tabs = st.tabs(
         "Water use and IWUE",
         "Producer optimizer",
         "Data quality and methods",
-    ]
+    ],
+    key="dashboard_main_tabs",
+    on_change="rerun",
 )
 
 with tabs[0]:
@@ -1500,244 +1502,249 @@ with tabs[7]:
 
 
 with tabs[1]:
-    st.subheader("Spatial farm maps")
-    if not spatial_available:
-        st.info(
-            "The spatial site-year file has not been created. Rerun "
-            "prepare_H_drive_data.ps1 to create cropping_systems_spatial.parquet."
-        )
-    elif not spatial_enabled:
-        st.info(
-            "The selected cropping system does not have an available rainfed or irrigated year. "
-            "Choose another system in Spatial farm options."
-        )
-    else:
-        with st.spinner("Preparing the fully filled Kansas map..."):
-            spatial_simulation = cached_load_spatial(str(SPATIAL_PATH))
-            master_sites = build_complete_master_grid(
-                spatial_simulation[["site_id", "latitude", "longitude"]],
-                max_grid_sites=5000,
+    # Render the spatial map only while its tab is open
+    # The default 2018 figure was previously created while this tab was hidden,
+    # so Plotly measured a narrow hidden container. Clicking another year caused
+    # a visible-tab rerender, which is why every non-default year looked normal.
+    if tabs[1].open:
+        st.subheader("Spatial farm maps")
+        if not spatial_available:
+            st.info(
+                "The spatial site-year file has not been created. Rerun "
+                "prepare_H_drive_data.ps1 to create cropping_systems_spatial.parquet."
             )
-
-            spatial_metric_col, spatial_metric_label, spatial_money = SPATIAL_MEASURES[
-                spatial_measure
-            ]
-            baseline_metrics = {
-                "marginal_gross_return_usd_ac",
-                "marginal_return_above_operating_usd_ac",
-                "incremental_iwue_kg_m3",
-            }
-            source_regimes = {spatial_regime}
-            if spatial_regime == "Irrigated" and spatial_metric_col in baseline_metrics:
-                source_regimes.add("Rainfed")
-
-            spatial_metric_source = spatial_simulation[
-                spatial_simulation["base_system"].eq(spatial_system)
-                & spatial_simulation["year"].eq(spatial_year)
-                & spatial_simulation["water_regime"].isin(source_regimes)
-            ].copy()
-
-            if spatial_metric_source.empty:
-                spatial_map_data = pd.DataFrame()
-                direct_site_count = 0
-            else:
-                spatial_detailed = add_economic_and_water_metrics(
-                    spatial_metric_source, economics
+        elif not spatial_enabled:
+            st.info(
+                "The selected cropping system does not have an available rainfed or irrigated year. "
+                "Choose another system in Spatial farm options."
+            )
+        else:
+            with st.spinner("Preparing the fully filled Kansas map..."):
+                spatial_simulation = cached_load_spatial(str(SPATIAL_PATH))
+                master_sites = build_complete_master_grid(
+                    spatial_simulation[["site_id", "latitude", "longitude"]],
+                    max_grid_sites=5000,
                 )
-                spatial_selected = spatial_detailed[
-                    spatial_detailed["water_regime"].eq(spatial_regime)
+
+                spatial_metric_col, spatial_metric_label, spatial_money = SPATIAL_MEASURES[
+                    spatial_measure
+                ]
+                baseline_metrics = {
+                    "marginal_gross_return_usd_ac",
+                    "marginal_return_above_operating_usd_ac",
+                    "incremental_iwue_kg_m3",
+                }
+                source_regimes = {spatial_regime}
+                if spatial_regime == "Irrigated" and spatial_metric_col in baseline_metrics:
+                    source_regimes.add("Rainfed")
+
+                spatial_metric_source = spatial_simulation[
+                    spatial_simulation["base_system"].eq(spatial_system)
+                    & spatial_simulation["year"].eq(spatial_year)
+                    & spatial_simulation["water_regime"].isin(source_regimes)
                 ].copy()
 
-                if spatial_metric_col not in spatial_selected.columns:
+                if spatial_metric_source.empty:
                     spatial_map_data = pd.DataFrame()
                     direct_site_count = 0
                 else:
-                    spatial_observed = (
-                        spatial_selected.groupby("site_id", as_index=False)
-                        .agg(
-                            latitude=("latitude", "median"),
-                            longitude=("longitude", "median"),
-                            map_value=(spatial_metric_col, "mean"),
+                    spatial_detailed = add_economic_and_water_metrics(
+                        spatial_metric_source, economics
+                    )
+                    spatial_selected = spatial_detailed[
+                        spatial_detailed["water_regime"].eq(spatial_regime)
+                    ].copy()
+
+                    if spatial_metric_col not in spatial_selected.columns:
+                        spatial_map_data = pd.DataFrame()
+                        direct_site_count = 0
+                    else:
+                        spatial_observed = (
+                            spatial_selected.groupby("site_id", as_index=False)
+                            .agg(
+                                latitude=("latitude", "median"),
+                                longitude=("longitude", "median"),
+                                map_value=(spatial_metric_col, "mean"),
+                            )
+                            .rename(columns={"map_value": spatial_metric_col})
                         )
-                        .rename(columns={"map_value": spatial_metric_col})
+                        finite_direct = pd.to_numeric(
+                            spatial_observed[spatial_metric_col], errors="coerce"
+                        ).replace([np.inf, -np.inf], np.nan)
+                        direct_site_count = int(finite_direct.notna().sum())
+                        spatial_filled_map = idw_fill_complete_grid(
+                            master_sites,
+                            spatial_observed,
+                            spatial_metric_col,
+                            neighbors=16,
+                        )
+                        spatial_map_data = spatial_filled_map
+
+            if spatial_map_data.empty:
+                if spatial_metric_col in baseline_metrics and spatial_regime == "Irrigated":
+                    st.warning(
+                        "This measure requires a same-site rainfed baseline. No matching rainfed baseline "
+                        "is available for the selected cropping system and year. Choose yield, gross return, "
+                        "net return, applied irrigation, or IWUE instead."
                     )
-                    finite_direct = pd.to_numeric(
-                        spatial_observed[spatial_metric_col], errors="coerce"
-                    ).replace([np.inf, -np.inf], np.nan)
-                    direct_site_count = int(finite_direct.notna().sum())
-                    spatial_filled_map = idw_fill_complete_grid(
-                        master_sites,
-                        spatial_observed,
-                        spatial_metric_col,
-                        neighbors=16,
+                else:
+                    st.warning(
+                        "No numeric values are available for this system, year, water regime, and measure. "
+                        "Choose another combination."
                     )
-                    spatial_map_data = spatial_filled_map
-
-        if spatial_map_data.empty:
-            if spatial_metric_col in baseline_metrics and spatial_regime == "Irrigated":
-                st.warning(
-                    "This measure requires a same-site rainfed baseline. No matching rainfed baseline "
-                    "is available for the selected cropping system and year. Choose yield, gross return, "
-                    "net return, applied irrigation, or IWUE instead."
-                )
             else:
-                st.warning(
-                    "No numeric values are available for this system, year, water regime, and measure. "
-                    "Choose another combination."
+                values = pd.to_numeric(
+                    spatial_map_data[spatial_metric_col], errors="coerce"
+                ).replace([np.inf, -np.inf], np.nan)
+                value_min = float(values.min())
+                value_max = float(values.max())
+                observed_cells = int(spatial_map_data["fill_method"].eq("observed").sum())
+                filled_cells = int(spatial_map_data["fill_method"].eq("idw").sum())
+
+                style = SPATIAL_COLOR_STYLES[spatial_style]
+                crosses_zero = value_min < 0 < value_max
+                # Color scaling is recalculated from the actual values in the selected year,
+                # system, regime, and measure so each year has its own within-map contrast.
+                if crosses_zero:
+                    limit = max(abs(value_min), abs(value_max))
+                    cmin, cmax = -limit, limit
+                    color_scale = [
+                        [0.00, "#c81d25"],
+                        [0.22, "#e67e5f"],
+                        [0.50, "#f2efc8"],
+                        [0.78, "#9ecf74"],
+                        [1.00, "#1a9850"],
+                    ]
+                    cmid = 0
+                else:
+                    cmin, cmax = value_min, value_max
+                    color_scale = style["scale"]
+                    cmid = None
+                    if np.isclose(cmin, cmax):
+                        cmin = value_min - 1e-9
+                        cmax = value_max + 1e-9
+
+                plot_data = spatial_map_data.sort_values(["latitude", "longitude"]).reset_index(drop=True)
+                # Stable statewide extent: always use the complete Kansas master grid
+                # rather than the selected year's finite observations. This keeps the
+                # default 2018 map at the same full-state extent as every other year.
+                extent_sites = master_sites[["latitude", "longitude"]].copy()
+                extent_sites["latitude"] = pd.to_numeric(
+                    extent_sites["latitude"], errors="coerce"
                 )
-        else:
-            values = pd.to_numeric(
-                spatial_map_data[spatial_metric_col], errors="coerce"
-            ).replace([np.inf, -np.inf], np.nan)
-            value_min = float(values.min())
-            value_max = float(values.max())
-            observed_cells = int(spatial_map_data["fill_method"].eq("observed").sum())
-            filled_cells = int(spatial_map_data["fill_method"].eq("idw").sum())
-
-            style = SPATIAL_COLOR_STYLES[spatial_style]
-            crosses_zero = value_min < 0 < value_max
-            # Color scaling is recalculated from the actual values in the selected year,
-            # system, regime, and measure so each year has its own within-map contrast.
-            if crosses_zero:
-                limit = max(abs(value_min), abs(value_max))
-                cmin, cmax = -limit, limit
-                color_scale = [
-                    [0.00, "#c81d25"],
-                    [0.22, "#e67e5f"],
-                    [0.50, "#f2efc8"],
-                    [0.78, "#9ecf74"],
-                    [1.00, "#1a9850"],
+                extent_sites["longitude"] = pd.to_numeric(
+                    extent_sites["longitude"], errors="coerce"
+                )
+                extent_sites = extent_sites.dropna(subset=["latitude", "longitude"])
+                if extent_sites.empty:
+                    extent_sites = plot_data[["latitude", "longitude"]].copy()
+                full_longitude_range = [
+                    float(extent_sites["longitude"].min()) - 0.08,
+                    float(extent_sites["longitude"].max()) + 0.08,
                 ]
-                cmid = 0
-            else:
-                cmin, cmax = value_min, value_max
-                color_scale = style["scale"]
-                cmid = None
-                if np.isclose(cmin, cmax):
-                    cmin = value_min - 1e-9
-                    cmax = value_max + 1e-9
-
-            plot_data = spatial_map_data.sort_values(["latitude", "longitude"]).reset_index(drop=True)
-            # Stable statewide extent: always use the complete Kansas master grid
-            # rather than the selected year's finite observations. This keeps the
-            # default 2018 map at the same full-state extent as every other year.
-            extent_sites = master_sites[["latitude", "longitude"]].copy()
-            extent_sites["latitude"] = pd.to_numeric(
-                extent_sites["latitude"], errors="coerce"
-            )
-            extent_sites["longitude"] = pd.to_numeric(
-                extent_sites["longitude"], errors="coerce"
-            )
-            extent_sites = extent_sites.dropna(subset=["latitude", "longitude"])
-            if extent_sites.empty:
-                extent_sites = plot_data[["latitude", "longitude"]].copy()
-            full_longitude_range = [
-                float(extent_sites["longitude"].min()) - 0.08,
-                float(extent_sites["longitude"].max()) + 0.08,
-            ]
-            full_latitude_range = [
-                float(extent_sites["latitude"].min()) - 0.08,
-                float(extent_sites["latitude"].max()) + 0.08,
-            ]
-            customdata = np.column_stack(
-                [
-                    plot_data["site_id"].astype(str).to_numpy(),
-                    plot_data["fill_method"].astype(str).to_numpy(),
+                full_latitude_range = [
+                    float(extent_sites["latitude"].min()) - 0.08,
+                    float(extent_sites["latitude"].max()) + 0.08,
                 ]
-            )
-            hover_value = (
-                "$%{marker.color:,.2f}/acre"
-                if spatial_money
-                else "%{marker.color:,.2f}"
-            )
-            spatial_fig = go.Figure(
-                go.Scattergl(
-                    x=plot_data["longitude"],
-                    y=plot_data["latitude"],
-                    mode="markers",
-                    marker={
-                        "symbol": "square",
-                        "size": 15.5,
-                        "opacity": 1.0,
-                        "color": plot_data[spatial_metric_col],
-                        "colorscale": color_scale,
-                        "cmin": cmin,
-                        "cmax": cmax,
-                        "cmid": cmid,
-                        "showscale": True,
-                        "line": {"width": 0.35, "color": style["line_color"]},
-                        "colorbar": {
-                            "title": spatial_metric_label,
-                            "tickprefix": "$" if spatial_money else "",
-                            "tickformat": "~s",
+                customdata = np.column_stack(
+                    [
+                        plot_data["site_id"].astype(str).to_numpy(),
+                        plot_data["fill_method"].astype(str).to_numpy(),
+                    ]
+                )
+                hover_value = (
+                    "$%{marker.color:,.2f}/acre"
+                    if spatial_money
+                    else "%{marker.color:,.2f}"
+                )
+                spatial_fig = go.Figure(
+                    go.Scattergl(
+                        x=plot_data["longitude"],
+                        y=plot_data["latitude"],
+                        mode="markers",
+                        marker={
+                            "symbol": "square",
+                            "size": 15.5,
+                            "opacity": 1.0,
+                            "color": plot_data[spatial_metric_col],
+                            "colorscale": color_scale,
+                            "cmin": cmin,
+                            "cmax": cmax,
+                            "cmid": cmid,
+                            "showscale": True,
+                            "line": {"width": 0.35, "color": style["line_color"]},
+                            "colorbar": {
+                                "title": spatial_metric_label,
+                                "tickprefix": "$" if spatial_money else "",
+                                "tickformat": "~s",
+                            },
                         },
+                        customdata=customdata,
+                        hovertemplate=(
+                            "Site: %{customdata[0]}<br>"
+                            "Longitude: %{x:.4f}<br>"
+                            "Latitude: %{y:.4f}<br>"
+                            + spatial_metric_label
+                            + ": "
+                            + hover_value
+                            + "<extra></extra>"
+                        ),
+                    )
+                )
+                spatial_fig.update_layout(
+                    title=(
+                        f"{spatial_system} | {spatial_regime} | {spatial_year}: "
+                        f"{spatial_measure}"
+                    ),
+                    height=760,
+                    autosize=True,
+                    uirevision=(
+                        f"full_kansas_{spatial_system}_{spatial_regime}_"
+                        f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
+                    ),
+                    margin={"l": 35, "r": 25, "t": 55, "b": 35},
+                    paper_bgcolor=style["background"],
+                    plot_bgcolor=style["background"],
+                    xaxis={
+                        "title": "Longitude",
+                        "showgrid": False,
+                        "zeroline": False,
+                        "range": full_longitude_range,
                     },
-                    customdata=customdata,
-                    hovertemplate=(
-                        "Site: %{customdata[0]}<br>"
-                        "Longitude: %{x:.4f}<br>"
-                        "Latitude: %{y:.4f}<br>"
-                        + spatial_metric_label
-                        + ": "
-                        + hover_value
-                        + "<extra></extra>"
+                    yaxis={
+                        "title": "Latitude",
+                        "showgrid": False,
+                        "zeroline": False,
+                        "scaleanchor": "x",
+                        "scaleratio": 1.25,
+                        "range": full_latitude_range,
+                    },
+                )
+                st.plotly_chart(
+                    spatial_fig,
+                    width="stretch",
+                    config={"responsive": True},
+                    key=(
+                        f"spatial_map_{spatial_system}_{spatial_regime}_"
+                        f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
                     ),
                 )
-            )
-            spatial_fig.update_layout(
-                title=(
-                    f"{spatial_system} | {spatial_regime} | {spatial_year}: "
-                    f"{spatial_measure}"
-                ),
-                height=760,
-                autosize=True,
-                uirevision=(
-                    f"full_kansas_{spatial_system}_{spatial_regime}_"
-                    f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
-                ),
-                margin={"l": 35, "r": 25, "t": 55, "b": 35},
-                paper_bgcolor=style["background"],
-                plot_bgcolor=style["background"],
-                xaxis={
-                    "title": "Longitude",
-                    "showgrid": False,
-                    "zeroline": False,
-                    "range": full_longitude_range,
-                },
-                yaxis={
-                    "title": "Latitude",
-                    "showgrid": False,
-                    "zeroline": False,
-                    "scaleanchor": "x",
-                    "scaleratio": 1.25,
-                    "range": full_latitude_range,
-                },
-            )
-            st.plotly_chart(
-                spatial_fig,
-                width="stretch",
-                config={"responsive": True},
-                key=(
-                    f"spatial_map_{spatial_system}_{spatial_regime}_"
-                    f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
-                ),
-            )
 
-            st.caption(
-                "The map uses the actual 2,776 simulated observation sites as the data source. "
-                "Observed site values come directly from the actual 2,776 simulation sites. Only unobserved internal display cells are interpolated. The color scale is recalculated separately for the selected year, system, regime, and measure, with red for low values and green for high values."
-            )
-            with st.expander("Map details", expanded=False):
-                st.write(
-                    f"Actual observed simulation sites used: {observed_cells:,}. "
-                    f"Completed grid cells shown after filling internal gaps: {len(plot_data):,}. "
-                    f"Interpolated internal cells only: {filled_cells:,}."
+                st.caption(
+                    "The map uses the actual 2,776 simulated observation sites as the data source. "
+                    "Observed site values come directly from the actual 2,776 simulation sites. Only unobserved internal display cells are interpolated. The color scale is recalculated separately for the selected year, system, regime, and measure, with red for low values and green for high values."
                 )
-                if np.isclose(value_min, value_max):
+                with st.expander("Map details", expanded=False):
                     st.write(
-                        "This selected field is nearly spatially uniform for the chosen year. "
-                        "Choose yield, gross return, or return after cost to see stronger spatial contrast."
+                        f"Actual observed simulation sites used: {observed_cells:,}. "
+                        f"Completed grid cells shown after filling internal gaps: {len(plot_data):,}. "
+                        f"Interpolated internal cells only: {filled_cells:,}."
                     )
+                    if np.isclose(value_min, value_max):
+                        st.write(
+                            "This selected field is nearly spatially uniform for the chosen year. "
+                            "Choose yield, gross return, or return after cost to see stronger spatial contrast."
+                        )
 
 # Keep data-coverage information available without interrupting the main dashboard header.
 if coverage_problems:
