@@ -1020,7 +1020,7 @@ with tabs[6]:
     preferred_objective = "Highest average return above operating cost"
     common_gross_objective = "Highest cumulative gross income over common years"
     common_operating_return_objective = (
-        "Highest cumulative return above operating cost over common years"
+        "Cumulative highest total return above operating cost over common years"
     )
     common_year_objectives = {
         common_gross_objective: {
@@ -1031,7 +1031,7 @@ with tabs[6]:
         common_operating_return_objective: {
             "annual_metric": "return_above_operating_usd_ac",
             "summary_metric": "cumulative_return_above_operating_common_years_usd_ac",
-            "caption_name": "Cumulative return above operating cost",
+            "caption_name": "Cumulative total return above operating cost",
         },
     }
     objective_options = [
@@ -1218,7 +1218,7 @@ with tabs[6]:
             "suffix": "/acre",
             "decimals": 0,
             "axis_title": (
-                "Cumulative return above operating cost over common years ($/acre)"
+                "Cumulative total return above operating cost over common years ($/acre)"
             ),
             "tickformat": ",.0f",
         },
@@ -1435,7 +1435,7 @@ with tabs[6]:
                     format="$%,.0f",
                 ),
                 "cumulative_return_above_operating_common_years_usd_ac": st.column_config.NumberColumn(
-                    "Cumulative return above operating cost over common years ($/acre)",
+                    "Cumulative total return above operating cost over common years ($/acre)",
                     format="$%,.0f",
                 ),
                 "mean_yield_kg_ha": st.column_config.NumberColumn("Mean yield (kg/ha)", format="%,.0f"),
