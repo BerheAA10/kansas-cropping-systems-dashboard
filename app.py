@@ -1618,6 +1618,27 @@ with tabs[1]:
                     cmax = value_max + 1e-9
 
             plot_data = spatial_map_data.sort_values(["latitude", "longitude"]).reset_index(drop=True)
+            # Stable statewide extent: always use the complete Kansas master grid
+            # rather than the selected year's finite observations. This keeps the
+            # default 2018 map at the same full-state extent as every other year.
+            extent_sites = master_sites[["latitude", "longitude"]].copy()
+            extent_sites["latitude"] = pd.to_numeric(
+                extent_sites["latitude"], errors="coerce"
+            )
+            extent_sites["longitude"] = pd.to_numeric(
+                extent_sites["longitude"], errors="coerce"
+            )
+            extent_sites = extent_sites.dropna(subset=["latitude", "longitude"])
+            if extent_sites.empty:
+                extent_sites = plot_data[["latitude", "longitude"]].copy()
+            full_longitude_range = [
+                float(extent_sites["longitude"].min()) - 0.08,
+                float(extent_sites["longitude"].max()) + 0.08,
+            ]
+            full_latitude_range = [
+                float(extent_sites["latitude"].min()) - 0.08,
+                float(extent_sites["latitude"].max()) + 0.08,
+            ]
             customdata = np.column_stack(
                 [
                     plot_data["site_id"].astype(str).to_numpy(),
@@ -1669,6 +1690,11 @@ with tabs[1]:
                     f"{spatial_measure}"
                 ),
                 height=760,
+                autosize=True,
+                uirevision=(
+                    f"full_kansas_{spatial_system}_{spatial_regime}_"
+                    f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
+                ),
                 margin={"l": 35, "r": 25, "t": 55, "b": 35},
                 paper_bgcolor=style["background"],
                 plot_bgcolor=style["background"],
@@ -1676,10 +1702,7 @@ with tabs[1]:
                     "title": "Longitude",
                     "showgrid": False,
                     "zeroline": False,
-                    "range": [
-                        float(plot_data["longitude"].min()) - 0.08,
-                        float(plot_data["longitude"].max()) + 0.08,
-                    ],
+                    "range": full_longitude_range,
                 },
                 yaxis={
                     "title": "Latitude",
@@ -1687,13 +1710,18 @@ with tabs[1]:
                     "zeroline": False,
                     "scaleanchor": "x",
                     "scaleratio": 1.25,
-                    "range": [
-                        float(plot_data["latitude"].min()) - 0.08,
-                        float(plot_data["latitude"].max()) + 0.08,
-                    ],
+                    "range": full_latitude_range,
                 },
             )
-            st.plotly_chart(spatial_fig, width="stretch")
+            st.plotly_chart(
+                spatial_fig,
+                width="stretch",
+                config={"responsive": True},
+                key=(
+                    f"spatial_map_{spatial_system}_{spatial_regime}_"
+                    f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
+                ),
+            )
 
             st.caption(
                 "The map uses the actual 2,776 simulated observation sites as the data source. "
