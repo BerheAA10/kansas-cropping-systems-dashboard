@@ -87,6 +87,11 @@ SPATIAL_MEASURES = {
     "Incremental IWUE": ("incremental_iwue_kg_m3", "Incremental IWUE (kg/m³)", False),
 }
 
+# Neutral grey background for all spatial maps
+MAP_BACKGROUND_GREY = "#d3d3d3"
+# This affects only blank map/paper areas; data cells keep their selected
+# red-yellow-green or alternative value color scale.
+
 SPATIAL_COLOR_STYLES = {
     "Sampled texture: green–yellow–red": {
         # low values = red, middle = yellow/cream, high values = green
@@ -100,7 +105,7 @@ SPATIAL_COLOR_STYLES = {
             [1.00, "#1a9850"],
         ],
         "line_color": "rgba(255,255,255,0.58)",
-        "background": "#dcdcdc",
+        "background": MAP_BACKGROUND_GREY,
     },
     "Green–yellow–orange–red stepped classes": {
         # stepped-class version with low values in red and high values in green
@@ -117,7 +122,7 @@ SPATIAL_COLOR_STYLES = {
             [1.00, "#1a9850"],
         ],
         "line_color": "rgba(255,255,255,0.62)",
-        "background": "#dcdcdc",
+        "background": MAP_BACKGROUND_GREY,
     },
     "Purple–gold": {
         "scale": [
@@ -129,7 +134,7 @@ SPATIAL_COLOR_STYLES = {
             [1.00, "#efe9b5"],
         ],
         "line_color": "rgba(255,255,255,0.34)",
-        "background": "#efefef",
+        "background": MAP_BACKGROUND_GREY,
     },
 }
 
@@ -1703,8 +1708,8 @@ with tabs[1]:
                         f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
                     ),
                     margin={"l": 35, "r": 25, "t": 55, "b": 35},
-                    paper_bgcolor=style["background"],
-                    plot_bgcolor=style["background"],
+                    paper_bgcolor=MAP_BACKGROUND_GREY,
+                    plot_bgcolor=MAP_BACKGROUND_GREY,
                     xaxis={
                         "title": "Longitude",
                         "showgrid": False,
