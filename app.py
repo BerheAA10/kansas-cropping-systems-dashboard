@@ -1724,6 +1724,7 @@ with tabs[1]:
                         "scaleratio": 1.25,
                         "range": full_latitude_range,
                     },
+                    template=None,
                 )
                 st.plotly_chart(
                     spatial_fig,
@@ -1733,6 +1734,7 @@ with tabs[1]:
                         f"spatial_map_{spatial_system}_{spatial_regime}_"
                         f"{spatial_year}_{spatial_metric_col}_{spatial_style}"
                     ),
+                    theme=None,
                 )
 
                 st.caption(
